@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import cinemaService from "../services/cinemaService";
+import * as cinemaService from "../services/cinemaService";
 
 const router = express.Router();
 
@@ -60,7 +60,7 @@ router.post("/:searchParam", async (req: Request, res: Response) => {
   try {
     const { searchParam } = req.params;
     const body = req.body;
-    const result = await cinemaService.insertInfo(searchParam, body);
+    const result = await cinemaService.insertIntoTable(searchParam, body);
     res.json(result);
   } catch (error) {
     console.error("Error añadiendo información:", error);

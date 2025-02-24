@@ -1,125 +1,101 @@
-import pool from "../config/db";
-import { Movie } from "../interfaces/Movie";
 import { ReservedSeat } from "../interfaces/ReservedSeat";
 import { sendEmail } from "./emailService";
+import { queries, executeQuery } from "../database/dbQueries";
 
-const getReservedSeats = async (showTimeId: string) => {
-    console.log("INIT TO getReservedSeats with showTimeId: ", showTimeId);
-    return (await pool.query(`SELECT rs.seat_row, rs.seat_column FROM cinema.reserved_seat rs JOIN cinema.reservation r ON rs.reservation_id = r.id WHERE r.showtime_id = ${showTimeId}`)).rows;
+export const getReservedSeats = async (showTimeId: string) => {
+    console.log("Fetching reserved seats for showTimeId:", showTimeId);
+    return await executeQuery(queries.getReservedSeats, [showTimeId]);
 };
 
-const getMoviesShowtime = async () => {
-    console.log("INIT TO getMoviesShowtime");
-    const [moviesResult, showtimeResult] = await Promise.all([
-        pool.query('SELECT * FROM cinema.movie'),
-        pool.query('SELECT * FROM cinema.showtime')
-    ]);
+export const getMoviesShowtime = async () => {
+    console.log("Fetching movies with showtimes...");
+    const movies = await executeQuery(queries.getAllFromTable("movie"));
+    const showtimes = await executeQuery(queries.getAllFromTable("showtime"));
 
-    const movies = moviesResult.rows;
-    const showtimes = showtimeResult.rows;
-
-    const moviesWithShowtimes = movies.map(movie => ({
+    return movies.map(movie => ({
         ...movie,
-        showtimes: showtimes.filter(showtime => showtime.movie_id === movie.id)
+        showtimes: showtimes.filter(showtime => showtime.movie_id === movie.id),
     }));
-    return moviesWithShowtimes;
 };
 
-const getReservations = async () => {
-    console.log("INIT TO getReservations");
-
-    const query = `
-        SELECT 
-            m.title AS movie_title,
-            s.theater_id,
-            s.datetime,
-            r.email,
-            r.uuid,
-            json_agg(
-                json_build_object('seat_row', rs.seat_row, 'seat_column', rs.seat_column)
-            ) AS reservedSeats
-        FROM cinema.reservation r
-        JOIN cinema.showtime s ON r.showtime_id = s.id
-        JOIN cinema.movie m ON s.movie_id = m.id
-        LEFT JOIN cinema.reserved_seat rs ON r.id = rs.reservation_id
-        GROUP BY m.title, s.theater_id, s.datetime, r.email, r.uuid;
-    `;
-
-    const { rows } = await pool.query(query);
-    return rows;
+export const getReservations = async () => {
+    console.log("Fetching all reservations...");
+    return await executeQuery(queries.getReservations);
 };
 
-const saveReservation = async (body: { uuid: string; showtimeId: string; email: string; reservedSeats: ReservedSeat[] }) => {
+export const getInfo = async (tableName: string) => {
+    console.log(`Fetching all records from ${tableName}...`);
+    return await executeQuery(queries.getAllFromTable(tableName));
+};
+
+export const insertIntoTable = async (tableName: string, data: any) => {
+    console.log(`Inserting into ${tableName}:`, data);
+    const columns = Object.keys(data).join(", ");
+    const values = Object.values(data);
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
+
+    return await executeQuery(queries.insertIntoTable(tableName, columns, placeholders), values);
+};
+
+export const updateById = async (tableName: string, id: string, data: any) => {
+    console.log(`Updating ${tableName}, ID: ${id}, Data:`, data);
+    
+    if (!data || Object.keys(data).length === 0) {
+        return { success: false, message: "El cuerpo de la solicitud está vacío" };
+    }
+
+    const filteredData = Object.fromEntries(
+        Object.entries(data).filter(([key]) => key !== "id")
+    );
+
+    if (Object.keys(filteredData).length === 0) {
+        return { success: false, message: "No hay datos válidos para actualizar" };
+    }
+
+    const columns = Object.keys(filteredData);
+    const values = Object.values(filteredData);
+    const setQuery = columns.map((col, i) => `${col} = $${i + 2}`).join(", ");
+    
+    const result = await executeQuery(queries.updateById(tableName, setQuery), [id, ...values]);
+
+    return result.length > 0 
+        ? { success: true, updated: result[0] } 
+        : { success: false, message: "No se encontró el registro" };
+};
+
+
+export const deleteById = async (tableName: string, id: string) => {
+    console.log(`Deleting from ${tableName}, ID: ${id}`);
+    const result = await executeQuery(queries.deleteById(tableName), [id]);
+    return result.length > 0 ? { success: true, deleted: result[0] } : { success: false, message: "No se encontró el registro" };
+};
+
+export const saveReservation = async (body: { uuid: string; showtimeId: string; email: string; reservedSeats: ReservedSeat[] }) => {
+    console.log("Saving new reservation:", body);
     const { uuid, showtimeId, email, reservedSeats } = body;
-    console.log("INIT TO saveReservation with body: ", body);
-    const reservationQuery = `INSERT INTO cinema.reservation (uuid, showtime_id, email, created_date) VALUES ($1, $2, $3, NOW()) RETURNING id`;
-    const reservationValues = [uuid, showtimeId, email];
-    const reservationId = await pool.query(reservationQuery, reservationValues);
-    console.log('reservationId:',reservationId.rows[0].id);
 
-    const query = `
-    INSERT INTO cinema.reserved_seat (reservation_id, seat_row, seat_column)
-    VALUES ${reservedSeats.map((_, i) => `($1, $${i * 2 + 2}, $${i * 2 + 3})`).join(", ")}
-    RETURNING *;
-    `;
-
-    const values = [reservationId.rows[0].id, ...reservedSeats.flatMap(seat => [seat.seatRow, seat.seatColumn])];
-    const result = await pool.query(query, values);
-    console.log('Inserted seats:', result.rows);
-
-    sendEmail({
+    await sendEmail({
         to: email,
         from: "felipetapsandes2@gmail.com",
         templateId: "d-6d90dc0c791f42158a2c7b979423475b",
         dynamicTemplateData: {
-            username: "Julian",
-            orderId: "ABC123",
-            orderDate: "2025-02-22",
-          },
+            reservedSeats: formatReservedSeats(reservedSeats)
+        }
     });
-    return { reservationId: reservationId.rows[0].id };
-}
 
-const getInfo = async (searchParam: string) => {
-    console.log("INIT TO getInfo with searchParam: ", searchParam);
-    return (await pool.query(`SELECT * FROM cinema.${searchParam}`)).rows;
-};
-  
-const insertInfo = async (searchParam: string, body: any) => {
-    console.log("INIT TO insertInfo with searchParam:", searchParam, "and body:", body);
+    const reservationResult = await insertIntoTable("reservation", { uuid, showtime_id: showtimeId, email, created_date: new Date() });
+    const reservation = reservationResult[0];
 
-    const columns = Object.keys(body).join(", ");
-    const values = Object.values(body);
-    const placeholders = values.map((_, index) => `$${index + 1}`).join(", ");
+    const seatValues = [reservation.id, ...reservedSeats.flatMap(seat => [seat.seatRow, seat.seatColumn])];
+    const seatQuery = queries.insertReservedSeats(reservedSeats.length);
 
-    const query = `INSERT INTO cinema.${searchParam} (${columns}) VALUES (${placeholders}) RETURNING *;`;
-    return (await pool.query(query, values)).rows[0];
+    await executeQuery(seatQuery, seatValues);
+
+    return { reservationId: reservation.id };
 };
 
-const deleteById = async (tableName: string, id: string) => {
-    console.log(`INIT TO deleteById: Table = ${tableName}, ID = ${id}`);
-    const query = `DELETE FROM cinema.${tableName} WHERE id = $1 RETURNING *;`;
-    const result = await pool.query(query, [id]);
-        return  result.rowCount !== null && result.rowCount > 0 
-            ? { success: true, deleted: result.rows[0] } 
-            : { success: false, message: "No se encontró el registro" };
+const formatReservedSeats = (reservedSeats: ReservedSeat[]): string => {
+    return reservedSeats
+        .map(seat => `${String.fromCharCode(65 + parseInt(seat.seatRow, 10))}${seat.seatColumn}`)
+        .join(",");
 };
-
-const updateById = async (searchParam: string, id: string, body: any) => {
-    console.log("INIT TO updateById: Table =", searchParam, "ID =", id, "Body =", body);
-    if (!body || Object.keys(body).length === 0) {
-        return { success: false, message: "El cuerpo de la solicitud está vacío" };
-    }
-    const columns = Object.keys(body);
-    const values = Object.values(body);
-    const setQuery = columns.map((col, index) => `${col} = $${index + 1}`).join(", ");
-    const query = `UPDATE cinema.${searchParam} SET ${setQuery} WHERE id = $${columns.length + 1} RETURNING *;`;
-    const result = await pool.query(query, [...values, id]);
-        return result.rowCount !== null && result.rowCount > 0
-            ? { success: true, updated: result.rows[0] }
-            : { success: false, message: "No se encontró el registro para actualizar" };
-};
-
-
-
-export default { getInfo, insertInfo, deleteById, updateById, getReservedSeats, getMoviesShowtime, saveReservation, getReservations };
