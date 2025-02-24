@@ -4,10 +4,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const pool = new Pool({
-  host: "localhost", // Host de tu RDS
-  user: "master_cinema", // Usuario de la BD
-  password: "cinema123", // Contraseña
-  database: "postgres", // Nombre de la BD
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   port: 5432,
   ssl: { rejectUnauthorized: false }
 });

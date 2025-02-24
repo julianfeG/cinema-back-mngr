@@ -1,3 +1,5 @@
+import serverless from "aws-serverless-express";
+import { APIGatewayProxyEvent, Context } from "aws-lambda";
 import app from "./app";
 
 const PORT = process.env.PORT || 3000;
@@ -9,6 +11,17 @@ app.use((req, res, next) => {
   next();
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+let handler;
+
+if (process.env.AWS_EXECUTION_ENV) {
+  const server = serverless.createServer(app);
+  handler = (event: APIGatewayProxyEvent, context: Context) => {
+    return serverless.proxy(server, event, context);
+  };
+} else {
+  app.listen(PORT, () => {
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  });
+}
+
+export { handler };
