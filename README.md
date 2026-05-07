@@ -62,7 +62,3 @@ npm run start
 ```
 Este comando compila el código y ejecuta el servidor con `ts-node`.
 
----
-
-✨ **Ahora puedes desplegar y probar tu Lambda de forma sencilla.** 🚀
-

@@ -4,12 +4,14 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: 5432,
-  ssl: { rejectUnauthorized: false }
+  host: process.env.RDS_HOST,
+  user: process.env.RDS_USERNAME,
+  password: process.env.RDS_PASSWORD,
+  database: process.env.RDS_DATABASE,
+  port: Number(process.env.RDS_PORT) || 5432,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 pool.query("SET client_encoding = 'UTF8';");

@@ -1,15 +1,16 @@
-service: cinema-back-mngr
+service: cinema-dev-api
 
 provider:
   name: aws
-  runtime: nodejs14.x
+  runtime: nodejs20.x
   region: us-east-1
+
   environment:
-    DB_HOST: ${env:DB_HOST}
-    DB_PORT: ${env:DB_PORT}
-    DB_USER: ${env:DB_USER}
-    DB_PASSWORD: ${env:DB_PASSWORD}
-    DB_NAME: ${env:DB_NAME}
+    RDS_HOST: ${env:RDS_HOST}
+    RDS_PORT: ${env:RDS_PORT}
+    RDS_USERNAME: ${env:RDS_USERNAME}
+    RDS_PASSWORD: ${env:RDS_PASSWORD}
+    RDS_DATABASE: ${env:RDS_DATABASE}
 
 functions:
   app:
