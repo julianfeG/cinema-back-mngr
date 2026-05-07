@@ -9,6 +9,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      LAMBDA_FUNCTION_NAME: cinema-dev-api
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,11 +36,27 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Deploy to AWS
-        run: npx serverless deploy
-        env:
-          RDS_HOST: ${{ secrets.RDS_HOST }}
-          RDS_PORT: ${{ secrets.RDS_PORT }}
-          RDS_USERNAME: ${{ secrets.RDS_USERNAME }}
-          RDS_PASSWORD: ${{ secrets.RDS_PASSWORD }}
-          RDS_DATABASE: ${{ secrets.RDS_DATABASE }}
+      - name: Create deployment package
+        run: |
+          zip -r function.zip . \
+            -x "node_modules/*" \
+            -x ".git/*" \
+            -x ".github/*"
+
+      - name: Deploy Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --zip-file fileb://function.zip
+
+      - name: Update Lambda environment variables
+        run: |
+          aws lambda update-function-configuration \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --environment "Variables={
+              RDS_HOST=${{ secrets.RDS_HOST }},
+              RDS_PORT=${{ secrets.RDS_PORT }},
+              RDS_USERNAME=${{ secrets.RDS_USERNAME }},
+              RDS_PASSWORD=${{ secrets.RDS_PASSWORD }},
+              RDS_DATABASE=${{ secrets.RDS_DATABASE }}
+            }"
